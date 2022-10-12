@@ -358,7 +358,7 @@ class StarDistBase(BaseModel):
         
         def relevant_mae_penality(dist_true_mask, dist_pred):
             dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
-            return masked_metric_mae_penality(dist_mask,reg_weight==self.config.train_background_reg,penality_reg=self.config.penality_reg,size_penality_reg = self.config.size_penality_reg)(dist_true, dist_pred)
+            return masked_metric_mae_penality(dist_mask,reg_weight=self.config.train_background_reg,penality_reg=self.config.penality_reg,size_penality_reg = self.config.size_penality_reg)(dist_true, dist_pred)
 
         def relevant_mse(dist_true_mask, dist_pred):
             dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
