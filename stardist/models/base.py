@@ -32,7 +32,7 @@ from ..utils import _is_power_of_2,  _is_floatarray, optimize_threshold
 
 # TODO: helper function to check if receptive field of cnn is sufficient for object sizes in GT
 
-def generic_masked_loss(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs):
+def generic_masked_loss_old(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs):
     def _loss(y_true, y_pred):
         actual_loss = K.mean(mask * weights * loss(y_true, y_pred), axis=-1)
         norm_mask = (K.mean(mask) + K.epsilon()) if norm_by_mask else 1
@@ -43,16 +43,42 @@ def generic_masked_loss(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, 
             return actual_loss / norm_mask
     return _loss
 
-def masked_loss(mask, penalty, reg_weight, norm_by_mask):
+def generic_masked_loss(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs,penality_reg=False,size_penality_reg=False):
+    def _loss(y_true, y_pred):
+        actual_loss = K.mean(mask * weights * loss(y_true, y_pred), axis=-1)
+        norm_mask = (K.mean(mask) + K.epsilon()) if norm_by_mask else 1
+        if reg_weight > 0:
+            if penality_reg:
+                reg_loss = K.mean((mask) * reg_penalty(y_pred), axis=-1)
+                return actual_loss / norm_mask + reg_weight * reg_loss
+            elif size_penality_reg:
+                reg_loss = K.mean((mask) * reg_penalty(y_pred-K.mean(y_true)), axis=-1)
+                return actual_loss / norm_mask + reg_weight * reg_loss
+            
+            else:    
+                reg_loss = K.mean((1-mask) * reg_penalty(y_pred), axis=-1)
+                return actual_loss / norm_mask + reg_weight * reg_loss
+        else:
+            return actual_loss / norm_mask
+    return _loss
+
+
+def masked_loss_old(mask, penalty, reg_weight, norm_by_mask):
     loss = lambda y_true, y_pred: penalty(y_true - y_pred)
     return generic_masked_loss(mask, loss, reg_weight=reg_weight, norm_by_mask=norm_by_mask)
 
+def masked_loss(mask, penalty, reg_weight, norm_by_mask,penality_reg,size_penality_reg):
+    loss = lambda y_true, y_pred: penalty(y_true - y_pred)
+    return generic_masked_loss(mask, loss, reg_weight=reg_weight, norm_by_mask=norm_by_mask,penality_reg=penality_reg,size_penality_reg=size_penality_reg)
 # TODO: should we use norm_by_mask=True in the loss or only in a metric?
 #       previous 2D behavior was norm_by_mask=False
 #       same question for reg_weight? use 1e-4 (as in 3D) or 0 (as in 2D)?
 
-def masked_loss_mae(mask, reg_weight=0, norm_by_mask=True):
+def masked_loss_mae_old(mask, reg_weight=0, norm_by_mask=True):
     return masked_loss(mask, K.abs, reg_weight=reg_weight, norm_by_mask=norm_by_mask)
+
+def masked_loss_mae(mask, reg_weight=0, norm_by_mask=True,penality_reg=False,size_penality_reg=False):
+    return masked_loss(mask, K.abs, reg_weight=reg_weight, norm_by_mask=norm_by_mask,penality_reg=penality_reg,size_penality_reg=size_penality_reg)
 
 def masked_loss_mse(mask, reg_weight=0, norm_by_mask=True):
     return masked_loss(mask, K.square, reg_weight=reg_weight, norm_by_mask=norm_by_mask)
@@ -312,6 +338,10 @@ class StarDistBase(BaseModel):
         def dist_loss(dist_true_mask, dist_pred):
             dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
             return masked_dist_loss(dist_mask, reg_weight=self.config.train_background_reg)(dist_true, dist_pred)
+        
+        def dist_loss_penality(dist_true_mask, dist_pred):
+            dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
+            return masked_dist_loss(dist_mask, reg_weight=self.config.train_background_reg,penality_reg=self.config.penality_reg,size_penality_reg = self.config.size_penality_reg)(dist_true, dist_pred)
 
         def dist_iou_metric(dist_true_mask, dist_pred):
             dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
@@ -329,6 +359,8 @@ class StarDistBase(BaseModel):
         if self._is_multiclass():
             prob_class_loss = weighted_categorical_crossentropy(self.config.train_class_weights, ndim=self.config.n_dim)
             loss = [prob_loss, dist_loss, prob_class_loss]
+        elif self.config.penality_loss:
+            loss = [prob_loss, dist_loss_penality]
         else:
             loss = [prob_loss, dist_loss]
 
