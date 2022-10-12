@@ -88,6 +88,11 @@ def masked_metric_mae(mask):
         return masked_loss(mask, K.abs, reg_weight=0, norm_by_mask=True)(y_true, y_pred)
     return relevant_mae
 
+def masked_metric_mae_penality(mask,reg_weight=0,penality_reg=False,size_penality_reg=False):
+    def relevant_mae(y_true, y_pred):
+        return masked_loss(mask, K.abs, reg_weight=reg_weight, norm_by_mask=True,penality_reg=penality_reg,size_penality_reg=size_penality_reg)(y_true, y_pred)
+    return relevant_mae
+
 def masked_metric_mse(mask):
     def relevant_mse(y_true, y_pred):
         return masked_loss(mask, K.square, reg_weight=0, norm_by_mask=True)(y_true, y_pred)
@@ -350,6 +355,10 @@ class StarDistBase(BaseModel):
         def relevant_mae(dist_true_mask, dist_pred):
             dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
             return masked_metric_mae(dist_mask)(dist_true, dist_pred)
+        
+        def relevant_mae_penality(dist_true_mask, dist_pred):
+            dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
+            return masked_metric_mae_penality(dist_mask,reg_weight==self.config.train_background_reg,penality_reg=self.config.penality_reg,size_penality_reg = self.config.size_penality_reg)(dist_true, dist_pred)
 
         def relevant_mse(dist_true_mask, dist_pred):
             dist_true, dist_mask = split_dist_true_mask(dist_true_mask)
@@ -359,15 +368,17 @@ class StarDistBase(BaseModel):
         if self._is_multiclass():
             prob_class_loss = weighted_categorical_crossentropy(self.config.train_class_weights, ndim=self.config.n_dim)
             loss = [prob_loss, dist_loss, prob_class_loss]
+            dist_metric = [relevant_mae, relevant_mse, dist_iou_metric]
         elif self.config.penality_loss:
             loss = [prob_loss, dist_loss_penality]
+            dist_metric = [relevant_mae_penality, relevant_mse, dist_iou_metric]
         else:
             loss = [prob_loss, dist_loss]
-
+            dist_metric = [relevant_mae, relevant_mse, dist_iou_metric]
         self.keras_model.compile(optimizer, loss         = loss,
                                             loss_weights = list(self.config.train_loss_weights),
                                             metrics      = {'prob': kld,
-                                                            'dist': [relevant_mae, relevant_mse, dist_iou_metric]})
+                                                            'dist': dist_metric})
 
         self.callbacks = []
         if self.basedir is not None:
