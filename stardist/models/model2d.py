@@ -221,6 +221,10 @@ class Config2D(BaseConfig):
         self.train_completion_crop     = 32
         self.train_patch_size          = 256,256
         self.train_background_reg      = 1e-4
+        self.config.penality_loss      = False
+        self.config.penality_reg       = False
+        self.config.size_penality_reg  = False
+        
         self.train_foreground_only     = 0.9
         self.train_sample_cache        = True
 
