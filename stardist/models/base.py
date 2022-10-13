@@ -32,7 +32,7 @@ from ..utils import _is_power_of_2,  _is_floatarray, optimize_threshold
 
 # TODO: helper function to check if receptive field of cnn is sufficient for object sizes in GT
 
-def generic_masked_loss_old(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs):
+def generic_masked_loss(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs):
     def _loss(y_true, y_pred):
         actual_loss = K.mean(mask * weights * loss(y_true, y_pred), axis=-1)
         norm_mask = (K.mean(mask) + K.epsilon()) if norm_by_mask else 1
@@ -43,7 +43,7 @@ def generic_masked_loss_old(mask, loss, weights=1, norm_by_mask=True, reg_weight
             return actual_loss / norm_mask
     return _loss
 
-def generic_masked_loss(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs,penality_reg=False,size_penality_reg=False):
+def generic_masked_loss_penality(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, reg_penalty=K.abs,penality_reg=False,size_penality_reg=False):
     def _loss(y_true, y_pred):
         actual_loss = K.mean(mask * weights * loss(y_true, y_pred), axis=-1)
         norm_mask = (K.mean(mask) + K.epsilon()) if norm_by_mask else 1
@@ -63,22 +63,23 @@ def generic_masked_loss(mask, loss, weights=1, norm_by_mask=True, reg_weight=0, 
     return _loss
 
 
-def masked_loss_old(mask, penalty, reg_weight, norm_by_mask):
+def masked_loss(mask, penalty, reg_weight, norm_by_mask):
     loss = lambda y_true, y_pred: penalty(y_true - y_pred)
     return generic_masked_loss(mask, loss, reg_weight=reg_weight, norm_by_mask=norm_by_mask)
 
-def masked_loss(mask, penalty, reg_weight, norm_by_mask,penality_reg,size_penality_reg):
+def masked_loss_penality(mask, penalty, reg_weight, norm_by_mask,penality_reg,size_penality_reg):
     loss = lambda y_true, y_pred: penalty(y_true - y_pred)
-    return generic_masked_loss(mask, loss, reg_weight=reg_weight, norm_by_mask=norm_by_mask,penality_reg=penality_reg,size_penality_reg=size_penality_reg)
+    return generic_masked_loss_penality(mask, loss, reg_weight=reg_weight, norm_by_mask=norm_by_mask,penality_reg=penality_reg,size_penality_reg=size_penality_reg)
+
 # TODO: should we use norm_by_mask=True in the loss or only in a metric?
 #       previous 2D behavior was norm_by_mask=False
 #       same question for reg_weight? use 1e-4 (as in 3D) or 0 (as in 2D)?
 
-def masked_loss_mae_old(mask, reg_weight=0, norm_by_mask=True):
+def masked_loss_mae(mask, reg_weight=0, norm_by_mask=True):
     return masked_loss(mask, K.abs, reg_weight=reg_weight, norm_by_mask=norm_by_mask)
 
-def masked_loss_mae(mask, reg_weight=0, norm_by_mask=True,penality_reg=False,size_penality_reg=False):
-    return masked_loss(mask, K.abs, reg_weight=reg_weight, norm_by_mask=norm_by_mask,penality_reg=penality_reg,size_penality_reg=size_penality_reg)
+def masked_loss_mae_penality(mask, reg_weight=0, norm_by_mask=True,penality_reg=False,size_penality_reg=False):
+    return masked_loss_penality(mask, K.abs, reg_weight=reg_weight, norm_by_mask=norm_by_mask,penality_reg=penality_reg,size_penality_reg=size_penality_reg)
 
 def masked_loss_mse(mask, reg_weight=0, norm_by_mask=True):
     return masked_loss(mask, K.square, reg_weight=reg_weight, norm_by_mask=norm_by_mask)
@@ -90,7 +91,7 @@ def masked_metric_mae(mask):
 
 def masked_metric_mae_penality(mask,reg_weight=0,penality_reg=False,size_penality_reg=False):
     def relevant_mae(y_true, y_pred):
-        return masked_loss(mask, K.abs, reg_weight=reg_weight, norm_by_mask=True,penality_reg=penality_reg,size_penality_reg=size_penality_reg)(y_true, y_pred)
+        return masked_loss_penality(mask, K.abs, reg_weight=reg_weight, norm_by_mask=True,penality_reg=penality_reg,size_penality_reg=size_penality_reg)(y_true, y_pred)
     return relevant_mae
 
 def masked_metric_mse(mask):
@@ -329,11 +330,17 @@ class StarDistBase(BaseModel):
         """
         if optimizer is None:
             optimizer = Adam(self.config.train_learning_rate)
-
-        masked_dist_loss = {'mse': masked_loss_mse,
-                            'mae': masked_loss_mae,
-                            'iou': masked_loss_iou,
-                            }[self.config.train_dist_loss]
+        if self.config.penality_loss:
+            masked_dist_loss = {'mse': masked_loss_mse,
+                                'mae': masked_loss_mae_penality,
+                                'iou': masked_loss_iou,
+                                }[self.config.train_dist_loss]
+        else:
+            masked_dist_loss = {'mse': masked_loss_mse,
+                                'mae': masked_loss_mae,
+                                'iou': masked_loss_iou,
+                                }[self.config.train_dist_loss]
+            
         prob_loss = 'binary_crossentropy'
 
 
